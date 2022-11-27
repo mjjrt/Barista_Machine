@@ -38,6 +38,7 @@ typedef enum STATE{
 	ON,
 	ONE_CUP,
 	TWO_CUPS,
+	HEATING,
 	FEHLER,
 }STATE;
 
@@ -105,6 +106,24 @@ void transmit_state(STATE s, uint8_t* msg);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/*
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == ON_OFF_KEY)
+	{
+		if(global_state == IDLE)
+		{
+			set_global_state(ON);
+		}else{
+			set_global_state(IDLE);
+			HAL_GPIO_WritePin(GPIOB, LED_CONTROL, 0);
+			HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
+			HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 0);
+		}
+
+	}
+}
+*/
 
 void set_global_state(STATE s)
 {
@@ -212,6 +231,9 @@ void transmit_state(STATE s, uint8_t* msg)
 		case TWO_CUPS:
 			sprintf((char*)msg, "State: TWO_CUPS\r\n");
 			break;
+		case HEATING:
+			sprintf((char*)msg, "State: HEATING\r\n");
+			break;
 		case FEHLER:
 			sprintf((char*)msg, "State: FEHLER\r\n");
 			break;
@@ -231,6 +253,13 @@ void transmit_state(STATE s, uint8_t* msg)
 	return;
 }
 
+void on_startup()
+{
+	char* startup_message = "****************************\r\n\tBARISTA PROJECT\t\r\n\t J. Hoersch\r\n\t W. Klaffke\r\n\t PRM WS 2022\r\n****************************\r\n";
+	HAL_UART_Transmit(&huart2, (uint8_t*)startup_message, strlen(startup_message), TRANSMIT_TIMEOUT);
+}
+
+
 void get_buttons(void)
 {
 	/* Read States of Power, CUP_1 and CUP_2 Keys */
@@ -240,12 +269,14 @@ void get_buttons(void)
 
 		if(global_state == IDLE)
 		{
-			/* Turn ON if Power Button is pressed */
+			// Turn ON if Power Button is pressed
 			set_global_state(ON);
 			HAL_GPIO_WritePin(GPIOB, LED_CONTROL, 1);
 
+			on_startup();
+
 		}else if(global_state == ON){
-			/* Turn OFF if Power Button is pressed */
+			// Turn OFF if Power Button is pressed again
 			set_global_state(IDLE);
 			HAL_GPIO_WritePin(GPIOB, LED_CONTROL, 0);
 		}
@@ -347,9 +378,8 @@ int main(void)
 
 	  		  if(get_temp() < TEMP_HOT)
 	  		  {
-	  			  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
-	  		  }else{
-	  			  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
+	  			  set_global_state(HEATING);
+	  		  }
 
 	  		  break;
 
@@ -393,6 +423,15 @@ int main(void)
 	  		  }
 	  		  break;
 
+	  	  case HEATING:
+	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
+	  		  if(get_temp() >= TEMP_HOT)
+	  		  {
+		  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
+	  			  set_global_state(ON);
+	  		  }
+	  		  break;
+
 	  	  case FEHLER:
 	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 1000)
 	  		  {
@@ -414,7 +453,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
   /* USER CODE END 3 */
 }
 
@@ -596,29 +634,19 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1|GPIO_PIN_12|GPIO_PIN_15|GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PA4 PA6 PA7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_6|GPIO_PIN_7;
+  /*Configure GPIO pins : PA4 PA6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pin : PA7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB1 PB12 PB15 PB4 */
   GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_12|GPIO_PIN_15|GPIO_PIN_4;
@@ -626,6 +654,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
