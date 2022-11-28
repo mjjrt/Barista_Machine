@@ -25,27 +25,25 @@
 
 #include <string.h>
 
-#include <errno.h>
-
 #include "pin_config.h"
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum STATE{
+typedef enum state_t{
 	IDLE, // 0
 	ON,
 	ONE_CUP,
 	TWO_CUPS,
 	HEATING,
 	FEHLER,
-}STATE;
+}STATE; // global state literal
 
 typedef enum ADC_Pin{
 	TEMP = 14,
 	TANK = 15,
-}ADC_Pin;
+}ADC_Pin; // ADC Pin literals
 
 /* USER CODE END PTD */
 
@@ -54,13 +52,14 @@ typedef enum ADC_Pin{
 
 #define TRANSMIT_TIMEOUT 0xFF
 #define DEBOUNCE_DELAY 40
+#define BUFFER_SIZE 64			// message buffer size
+
 #define TEMP_HOT 3000
 #define WATER_LEVEL_LOW 1000
 
 #define CUP_1_TIME 5
 #define CUP_2_TIME 10
 
-#define BUFFER_SIZE 64
 
 /* USER CODE END PD */
 
@@ -78,11 +77,11 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-static int global_state = IDLE;
+static int global_state = IDLE;			// initialize global state to IDLE (0)
 
-static uint8_t buffer[BUFFER_SIZE];
+static uint8_t buffer[BUFFER_SIZE];		// global message buffer
 
-static uint16_t timer_val;
+static uint16_t timer_val; 				// global timer variable
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -127,6 +126,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 void set_global_state(STATE s)
 {
+	/* Only touch global_state with this function */
 	global_state = s;
 	transmit_state(s, buffer);
 	return;
@@ -134,6 +134,7 @@ void set_global_state(STATE s)
 
 void ADC_Select_CH14()
 {
+	/* Select ADC Channel for readout */
 	ADC_ChannelConfTypeDef sConfig = {0};
 
 	sConfig.Channel = ADC_CHANNEL_14;
@@ -148,6 +149,7 @@ void ADC_Select_CH14()
 
 void ADC_Select_CH15()
 {
+	/* Select ADC Channel for readout */
 	ADC_ChannelConfTypeDef sConfig = {0};
 
 	sConfig.Channel = ADC_CHANNEL_15;
@@ -163,6 +165,7 @@ void ADC_Select_CH15()
 
 uint16_t get_analog_state(ADC_Pin adc)
 {
+	/* get the analog value (Temperature or Fill Level) from ADCs */
 	uint16_t value = 0;
 
 	switch(adc){
@@ -196,16 +199,19 @@ uint16_t get_analog_state(ADC_Pin adc)
 
 uint16_t get_temp()
 {
+	/* get temperature */
 	return get_analog_state(TEMP);
 }
 
 uint16_t get_water_level()
 {
+	/* get fill level */
 	return get_analog_state(TANK);
 }
 
 void transmit_sensors(uint16_t* vals, uint8_t* msg)
 {
+	/* Transmit the sensor values */
 	 vals[0] = get_temp();
 	 vals[1] = get_water_level();
 
@@ -218,6 +224,7 @@ void transmit_sensors(uint16_t* vals, uint8_t* msg)
 
 void transmit_state(STATE s, uint8_t* msg)
 {
+	/* Transmit the global state */
 	switch(global_state){
 		case IDLE:
 			sprintf((char*)msg, "State: IDLE\r\n");
@@ -239,14 +246,13 @@ void transmit_state(STATE s, uint8_t* msg)
 			break;
 		default:
 			break;
-
 	}
 
 	HAL_UART_Transmit(&huart2, msg, 64, 0xFF);
 
 	for(int i = 0; i != BUFFER_SIZE; ++i)
 	{
-		// rezero the message buffer
+		// reset the message buffer
 		buffer[i] = '\r';
 	}
 
@@ -255,15 +261,21 @@ void transmit_state(STATE s, uint8_t* msg)
 
 void on_startup()
 {
-	char* startup_message = "****************************\r\n\tBARISTA PROJECT\t\r\n\t J. Hoersch\r\n\t W. Klaffke\r\n\t PRM WS 2022\r\n****************************\r\n";
+	/* Message transmitted on startup */
+	char* startup_message = "****************************\r\n" \
+							"\tBARISTA PROJECT\t\r\n" \
+							"\t J. Hoersch\r\n\t W. Klaffke\r\n" \
+							"\t PRM WS 2022\r\n****************************\r\n";
+
 	HAL_UART_Transmit(&huart2, (uint8_t*)startup_message, strlen(startup_message), TRANSMIT_TIMEOUT);
+
+	return;
 }
 
 
 void get_buttons(void)
 {
 	/* Read States of Power, CUP_1 and CUP_2 Keys */
-
 	if(HAL_GPIO_ReadPin(GPIOA, ON_OFF_KEY) != 0)
 	{
 
@@ -276,7 +288,7 @@ void get_buttons(void)
 			on_startup();
 
 		}else if(global_state == ON){
-			// Turn OFF if Power Button is pressed again
+			// Turn OFF if Power Button is pressed in state ON
 			set_global_state(IDLE);
 			HAL_GPIO_WritePin(GPIOB, LED_CONTROL, 0);
 		}
@@ -289,7 +301,7 @@ void get_buttons(void)
 
 	if(HAL_GPIO_ReadPin(GPIOA, CUP_1_KEY) != 0 && global_state == ON)
 	{
-		/* Can only be activated if POWER state is ON */
+		/* Can only be activated if global_state is ON */
 		set_global_state(ONE_CUP);
 
 		while(HAL_GPIO_ReadPin(GPIOA, CUP_1_KEY) != 0) // Debouncing
@@ -300,7 +312,7 @@ void get_buttons(void)
 
 	if(HAL_GPIO_ReadPin(GPIOA, CUP_2_KEY) != 0 && global_state == ON)
 	{
-		/* Can only be activated if POWER state is ON */
+		/* Can only be activated if global_state is ON */
 		set_global_state(TWO_CUPS);
 
 		while(HAL_GPIO_ReadPin(GPIOA, CUP_2_KEY) != 0) // Debouncing
@@ -366,7 +378,7 @@ int main(void)
 
 	  switch(global_state){
 	  	  case IDLE:
-	  		  break;
+	  		  break; // IDLE
 
 	  	  case ON:
 	  		  HAL_GPIO_WritePin(GPIOB, LED_CONTROL, 1);
@@ -381,11 +393,12 @@ int main(void)
 	  			  set_global_state(HEATING);
 	  		  }
 
-	  		  break;
+	  		  break; // ON
 
 	  	  case ONE_CUP:
 	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
 	  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 1);
+//	  		  transmit_sensors(vals, buffer);
 
 	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 5000)
 	  		  {
@@ -400,11 +413,13 @@ int main(void)
 		  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
 		  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 0);
 	  		  }
-	  		  break;
+
+	  		  break; // ONE_CUP
 
 	  	  case TWO_CUPS:
 	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
 	  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 1);
+//	  		  transmit_sensors(vals, buffer);
 
 	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 1000)
 	  		  {
@@ -421,7 +436,7 @@ int main(void)
 		  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 0);
 
 	  		  }
-	  		  break;
+	  		  break; // TWO_CUPS
 
 	  	  case HEATING:
 	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
@@ -430,7 +445,7 @@ int main(void)
 		  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
 	  			  set_global_state(ON);
 	  		  }
-	  		  break;
+	  		  break; // HEATING
 
 	  	  case FEHLER:
 	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 1000)
@@ -443,10 +458,10 @@ int main(void)
 	  		  {
 	  			  set_global_state(ON);
 	  		  }
-	  		  break;
+	  		  break; // FEHLER
 
 	  	  default:
-	  		  break;
+	  		  break; // default
 	  } // switch
 
 	 }
@@ -674,6 +689,11 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+
+  char msg[32];
+  sprintf(msg, "Error_Handler: Reset board\r\n");
+  HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
   while (1)
   {
   }
