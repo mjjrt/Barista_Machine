@@ -13,6 +13,7 @@
   * in the root directory of this software component.
   * If no LICENSE file comes with this software, it is provided AS-IS.
   *
+  *
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -60,7 +61,10 @@ typedef enum ADC_Pin{
 #define CUP_1_TIME 5
 #define CUP_2_TIME 10
 
+#define ONEHZ 5000
+#define FIVEHZ 1000
 
+#define OFF 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -325,6 +329,50 @@ void get_buttons(void)
 	return;
 }
 
+//typedef uint16_t FREQ;
+//
+//void blink_control(FREQ f)
+//{
+//	static int previous_state;
+//
+//	switch(f){
+//		case 1:
+//
+//	}
+//}
+
+void heater(uint16_t state)
+{
+	if(state == ON)
+	{
+		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
+	}
+	else{
+		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, RESET);
+	}
+
+	return;
+}
+
+void pump(uint16_t state)
+{
+	if(state == ON)
+	{
+		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 1);
+	}
+	else{
+		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, RESET);
+	}
+
+	return;
+}
+
+
+void LED_blink(uint16_t state)
+{
+
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -396,35 +444,39 @@ int main(void)
 	  		  break; // ON
 
 	  	  case ONE_CUP:
-	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
-	  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 1);
+	  		  heater(ON);
+	  		  pump(ON);
 //	  		  transmit_sensors(vals, buffer);
 
-	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 5000)
+//	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 5000)
+	  		  if(__HAL_TIM_GET_COUNTER(&htim10) >= ONEHZ)
 	  		  {
 	  			  HAL_GPIO_TogglePin(GPIOB, LED_CONTROL);
-	  			  timer_val = __HAL_TIM_GET_COUNTER(&htim10);
+//	  			  timer_val = __HAL_TIM_GET_COUNTER(&htim10);
+	  			  __HAL_TIM_SET_COUNTER(&htim10, 0);
 	  			  secs++;
 	  		  }
 	  		  if(secs > CUP_1_TIME*2)
 	  		  {
 	  			  secs = 0;
 	  			  set_global_state(ON);
-		  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
-		  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 0);
+		  		  heater(OFF);
+		  		  pump(OFF);
 	  		  }
 
 	  		  break; // ONE_CUP
 
 	  	  case TWO_CUPS:
-	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
-	  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 1);
+	  		  heater(ON);
+	  		  pump(ON);
 //	  		  transmit_sensors(vals, buffer);
 
-	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 1000)
+//	  		  if(__HAL_TIM_GET_COUNTER(&htim10) - timer_val >= 1000)
+	  		  if(__HAL_TIM_GET_COUNTER(&htim10) >= FIVEHZ)
 	  		  {
 	  			  HAL_GPIO_TogglePin(GPIOB, LED_CONTROL);
-	  			  timer_val = __HAL_TIM_GET_COUNTER(&htim10);
+//	  			  timer_val = __HAL_TIM_GET_COUNTER(&htim10);
+	  			  __HAL_TIM_SET_COUNTER(&htim10, 0);
 	  			  secs++;
 	  		  }
 
@@ -432,17 +484,17 @@ int main(void)
 	  		  {
 	  			  secs = 0;
 	  			  set_global_state(ON);
-		  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
-		  		  HAL_GPIO_WritePin(GPIOB, PUMP_CONTROL, 0);
+		  		  heater(OFF);
+		  		  pump(OFF);
 
 	  		  }
 	  		  break; // TWO_CUPS
 
 	  	  case HEATING:
-	  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 1);
+	  		  heater(ON);
 	  		  if(get_temp() >= TEMP_HOT)
 	  		  {
-		  		  HAL_GPIO_WritePin(GPIOB, HEATER_CONTROL, 0);
+		  		  heater(OFF);
 	  			  set_global_state(ON);
 	  		  }
 	  		  break; // HEATING
